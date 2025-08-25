@@ -17,7 +17,7 @@
 
 // 接続情報のマクロ（必要に応じて調整）
 #define BAUDRATE 57600
-#define DEVICE_NAME "/dev/ttyUSB1"
+#define DEVICE_NAME "/dev/ttyUSB0"
 
 // メッセージ定義のショートカット
 #define MSG dynamixel_controller::msg::DynamixelController
@@ -257,37 +257,7 @@ void DynamixelController::handle_sync_read_command(const dynamixel_controller::m
     std::vector<uint8_t> response_errors;
     std::vector<uint8_t> response_data;
     
-    // Handle TTL devices
-    if (!ttl_targets.empty()) {
-        dynamixel::GroupSyncRead ttlRead(port_handler_, packet_handler_, start_address, data_length);
-        for (auto id : ttl_targets) {
-            ttlRead.addParam(id);
-        }
-        int comm_result = ttlRead.txRxPacket();
-        if (comm_result == COMM_SUCCESS) {
-            for (auto id : ttl_targets) {
-                if (ttlRead.isAvailable(id, start_address, data_length)) {
-                    uint32_t data = ttlRead.getData(id, start_address, data_length);
-                    response_ids.push_back(id);
-                    response_errors.push_back(0); // No error
-                    
-                    std::string data_str = "";
-                    for (uint8_t i = 0; i < data_length; i++) {
-                        uint8_t byte_data = static_cast<uint8_t>((data >> (i*8)) & 0xFF);
-                        response_data.push_back(byte_data);
-                        if (i > 0) data_str += " ";
-                        data_str += std::to_string(byte_data);
-                    }
-                    RCLCPP_INFO(this->get_logger(), "SYNC_READ success (TTL) - ID: %d, Address: %d, Length: %d, Data: [%s]", 
-                                id, start_address, data_length, data_str.c_str());
-                }
-            }
-        } else {
-            RCLCPP_ERROR(this->get_logger(), "SYNC_READ failed for TTL devices: %s", packet_handler_->getTxRxResult(comm_result));
-        }
-    }
-    
-    // Handle RS485 devices
+    // Handle RS485 devices first
     if (!rs_targets.empty()) {
         dynamixel::GroupSyncRead rsRead(port_handler_, packet_handler_, start_address, data_length);
         for (auto id : rs_targets) {
@@ -314,6 +284,36 @@ void DynamixelController::handle_sync_read_command(const dynamixel_controller::m
             }
         } else {
             RCLCPP_ERROR(this->get_logger(), "SYNC_READ failed for RS485 devices: %s", packet_handler_->getTxRxResult(comm_result));
+        }
+    }
+    
+    // Handle TTL devices second
+    if (!ttl_targets.empty()) {
+        dynamixel::GroupSyncRead ttlRead(port_handler_, packet_handler_, start_address, data_length);
+        for (auto id : ttl_targets) {
+            ttlRead.addParam(id);
+        }
+        int comm_result = ttlRead.txRxPacket();
+        if (comm_result == COMM_SUCCESS) {
+            for (auto id : ttl_targets) {
+                if (ttlRead.isAvailable(id, start_address, data_length)) {
+                    uint32_t data = ttlRead.getData(id, start_address, data_length);
+                    response_ids.push_back(id);
+                    response_errors.push_back(0); // No error
+                    
+                    std::string data_str = "";
+                    for (uint8_t i = 0; i < data_length; i++) {
+                        uint8_t byte_data = static_cast<uint8_t>((data >> (i*8)) & 0xFF);
+                        response_data.push_back(byte_data);
+                        if (i > 0) data_str += " ";
+                        data_str += std::to_string(byte_data);
+                    }
+                    RCLCPP_INFO(this->get_logger(), "SYNC_READ success (TTL) - ID: %d, Address: %d, Length: %d, Data: [%s]", 
+                                id, start_address, data_length, data_str.c_str());
+                }
+            }
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "SYNC_READ failed for TTL devices: %s", packet_handler_->getTxRxResult(comm_result));
         }
     }
     
